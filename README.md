@@ -2,7 +2,11 @@
 
 **Professional Invoice Management Desktop Application**
 
-A lightweight, offline-first desktop invoice generator built for small to medium wholesale businesses. Create, manage, and print invoices with a clean, modern interface.
+---
+
+## Project Overview
+
+A lightweight, offline-first desktop invoice generator built for small to medium wholesale businesses. Create, manage, and print invoices with a clean, modern interface. The application runs entirely on your machine — no internet connection required, no data sent to external servers.
 
 ---
 
@@ -22,7 +26,25 @@ A lightweight, offline-first desktop invoice generator built for small to medium
 
 ## Screenshots
 
-> *Screenshots coming soon.*
+### Dashboard
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+### Products
+
+![Products](docs/screenshots/products.png)
+
+### New Invoice
+
+![New Invoice](docs/screenshots/new-invoice.png)
+
+### Settings
+
+![Settings](docs/screenshots/settings.png)
+
+### About
+
+![About](docs/screenshots/about.png)
 
 ---
 
