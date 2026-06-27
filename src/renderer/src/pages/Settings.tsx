@@ -59,14 +59,14 @@ export default function Settings() {
           <Form.Item label={t('logo')}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               {logo && <Image src={logo} style={{ maxHeight: 80, maxWidth: 200 }} preview={false} />}
-              <Button icon={<UploadOutlined />} onClick={handleUploadLogo}>Upload Logo</Button>
+              <Button icon={<UploadOutlined />} onClick={handleUploadLogo}>{t('upload_logo')}</Button>
             </div>
           </Form.Item>
           <Form.Item name="invoice_paper_size" label={t('invoice_paper_size')}>
             <Select options={[
-              { value: 'A4', label: 'A4 (210x297mm)' },
-              { value: 'Letter', label: 'Letter (216x279mm)' },
-              { value: 'A5', label: 'A5 (148x210mm)' }
+              { value: 'A4', label: 'A4' },
+              { value: 'Letter', label: 'Letter' },
+              { value: 'A5', label: 'A5' }
             ]} />
           </Form.Item>
           <Form.Item name="language" label={t('language')}>

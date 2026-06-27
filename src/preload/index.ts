@@ -14,10 +14,26 @@ const api = {
   invoices: {
     list: () => ipcRenderer.invoke('invoices:list'),
     search: (q: string) => ipcRenderer.invoke('invoices:search', q),
+    searchAdvanced: (filters: any) => ipcRenderer.invoke('invoices:searchAdvanced', filters),
     get: (id: number) => ipcRenderer.invoke('invoices:get', id),
     create: (data: any) => ipcRenderer.invoke('invoices:create', data),
     update: (id: number, data: any) => ipcRenderer.invoke('invoices:update', id, data),
-    delete: (id: number) => ipcRenderer.invoke('invoices:delete', id)
+    delete: (id: number) => ipcRenderer.invoke('invoices:delete', id),
+    getBySupplier: (supplierId: number) => ipcRenderer.invoke('invoices:getBySupplier', supplierId),
+    supplierBalance: (supplierId: number, excludeId?: number) => ipcRenderer.invoke('invoices:supplierBalance', supplierId, excludeId)
+  },
+  suppliers: {
+    list: () => ipcRenderer.invoke('suppliers:list'),
+    listWithBalances: () => ipcRenderer.invoke('suppliers:listWithBalances'),
+    search: (q: string) => ipcRenderer.invoke('suppliers:search', q),
+    get: (id: number) => ipcRenderer.invoke('suppliers:get', id),
+    getWithBalance: (id: number) => ipcRenderer.invoke('suppliers:getWithBalance', id),
+    getInvoices: (id: number, q?: string) => ipcRenderer.invoke('suppliers:getInvoices', id, q),
+    create: (data: any) => ipcRenderer.invoke('suppliers:create', data),
+    createOrGet: (name: string) => ipcRenderer.invoke('suppliers:createOrGet', name),
+    update: (id: number, data: any) => ipcRenderer.invoke('suppliers:update', id, data),
+    delete: (id: number) => ipcRenderer.invoke('suppliers:delete', id),
+    dashboard: () => ipcRenderer.invoke('suppliers:dashboard')
   },
   settings: {
     getAll: () => ipcRenderer.invoke('settings:getAll'),

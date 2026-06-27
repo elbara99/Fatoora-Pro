@@ -2,7 +2,7 @@ import { ReactNode } from 'react'
 import { Layout, Menu, Select } from 'antd'
 import {
   DashboardOutlined, ShopOutlined, FileTextOutlined,
-  UnorderedListOutlined, SettingOutlined, InfoCircleOutlined
+  UnorderedListOutlined, SettingOutlined, InfoCircleOutlined, TeamOutlined
 } from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -17,6 +17,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const menuItems = [
     { key: '/', icon: <DashboardOutlined />, label: t('dashboard') },
     { key: '/products', icon: <ShopOutlined />, label: t('products') },
+    { key: '/suppliers', icon: <TeamOutlined />, label: t('suppliers') },
     { key: '/new-invoice', icon: <FileTextOutlined />, label: t('new_invoice') },
     { key: '/invoices', icon: <UnorderedListOutlined />, label: t('invoice_history') },
     { key: '/settings', icon: <SettingOutlined />, label: t('settings') },

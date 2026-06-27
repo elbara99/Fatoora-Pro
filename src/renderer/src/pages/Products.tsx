@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Button, Form, Input, InputNumber, Space, Popconfirm, Modal, Alert, List } from 'antd'
+import { Button, Form, Input, InputNumber, Space, Popconfirm, Modal, Alert, List, message } from 'antd'
 import { PlusOutlined, ImportOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { formatCurrency } from '../utils/format'
@@ -36,8 +36,12 @@ export default function Products() {
   }
 
   const handleDelete = async (id: number) => {
-    await window.api.products.delete(id)
-    fetch()
+    try {
+      await window.api.products.delete(id)
+      fetch()
+    } catch (err) {
+      message.error(String(err))
+    }
   }
 
   const handleImport = async () => {
@@ -84,15 +88,15 @@ export default function Products() {
           </Form.Item>
         </Form>
       </FormModal>
-      <Modal open={!!importResult} title="Import Results" onCancel={() => setImportResult(null)}
-        footer={<Button type="primary" onClick={() => setImportResult(null)}>OK</Button>}>
+      <Modal open={!!importResult} title={t('import_results')} onCancel={() => setImportResult(null)}
+        footer={<Button type="primary" onClick={() => setImportResult(null)}>{t('ok')}</Button>}>
         {importResult && (
           <>
             <Alert type={importResult.failed > 0 ? 'warning' : 'success'}
-              message={<span>Imported: <strong>{importResult.imported}</strong> | Updated: <strong>{importResult.updated}</strong> | Failed: <strong>{importResult.failed}</strong></span>}
+              message={<span>{t('imported')}: <strong>{importResult.imported}</strong> | {t('updated')}: <strong>{importResult.updated}</strong> | {t('failed')}: <strong>{importResult.failed}</strong></span>}
               style={{ marginBottom: 16 }} />
             {importResult.errors.length > 0 && (
-              <List size="small" header="Errors:" dataSource={importResult.errors}
+              <List size="small" header={`${t('errors')}:`} dataSource={importResult.errors}
                 renderItem={(item) => <List.Item style={{ color: '#ff4d4f' }}>{item}</List.Item>} />
             )}
           </>

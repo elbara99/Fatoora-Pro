@@ -4,6 +4,8 @@ export interface InvoiceRow {
   id: number
   invoice_number: string
   invoice_date: string
+  supplier_id: number | null
+  supplier_name: string
   subtotal: number
   total: number
   notes: string | null
@@ -19,8 +21,15 @@ export interface InvoiceItemInput {
 
 export interface InvoiceInput {
   invoice_date: string
+  supplier_id: number
+  supplier_name: string
   notes?: string | null
   items: InvoiceItemInput[]
+}
+
+export interface SupplierBalance {
+  previousBalance: number
+  newBalance: number
 }
 
 export function createInvoiceService(db: Database.Database) {
@@ -30,28 +39,53 @@ export function createInvoiceService(db: Database.Database) {
 
   const attachItems = (invoice: InvoiceRow): InvoiceRow & { items: any[] } => {
     const items = getItemsForInvoice.all(invoice.id) as any[]
-    console.log(`[InvoiceService] invoice ${invoice.invoice_number} (id=${invoice.id}): loaded ${items.length} items`)
     return { ...invoice, items }
   }
 
+  const getSupplierBalance = (supplierId: number, excludeInvoiceId?: number): SupplierBalance => {
+    let previousBalance: number
+    if (excludeInvoiceId) {
+      previousBalance = (db.prepare(
+        'SELECT COALESCE(SUM(total), 0) AS t FROM invoices WHERE supplier_id = ? AND id != ?'
+      ).get(supplierId, excludeInvoiceId) as { t: number }).t
+    } else {
+      previousBalance = (db.prepare(
+        'SELECT COALESCE(SUM(total), 0) AS t FROM invoices WHERE supplier_id = ?'
+      ).get(supplierId) as { t: number }).t
+    }
+    return { previousBalance, newBalance: previousBalance }
+  }
+
   const list = (): (InvoiceRow & { items: any[] })[] => {
-    const invoices = db.prepare('SELECT * FROM invoices ORDER BY created_at DESC').all() as InvoiceRow[]
+    const invoices = db.prepare(`
+      SELECT i.*, COALESCE(s.name, i.supplier_name, '') AS supplier_name
+      FROM invoices i
+      LEFT JOIN suppliers s ON s.id = i.supplier_id
+      ORDER BY i.created_at DESC
+    `).all() as InvoiceRow[]
     const result = invoices.map(attachItems)
-    console.log(`[InvoiceService] list: ${result.length} invoices returned`)
     return result
   }
 
   const search = (q: string): (InvoiceRow & { items: any[] })[] => {
-    const invoices = db.prepare(
-      `SELECT * FROM invoices WHERE invoice_number LIKE ? ORDER BY created_at DESC LIMIT 50`
-    ).all(`%${q}%`) as InvoiceRow[]
+    const invoices = db.prepare(`
+      SELECT i.*, COALESCE(s.name, i.supplier_name, '') AS supplier_name
+      FROM invoices i
+      LEFT JOIN suppliers s ON s.id = i.supplier_id
+      WHERE i.invoice_number LIKE ? OR COALESCE(s.name, i.supplier_name, '') LIKE ?
+      ORDER BY i.created_at DESC LIMIT 50
+    `).all(`%${q}%`, `%${q}%`) as InvoiceRow[]
     const result = invoices.map(attachItems)
-    console.log(`[InvoiceService] search: ${result.length} invoices returned`)
     return result
   }
 
   const getById = (id: number): (InvoiceRow & { items: any[] }) | undefined => {
-    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(id) as InvoiceRow | undefined
+    const invoice = db.prepare(`
+      SELECT i.*, COALESCE(s.name, i.supplier_name, '') AS supplier_name
+      FROM invoices i
+      LEFT JOIN suppliers s ON s.id = i.supplier_id
+      WHERE i.id = ?
+    `).get(id) as InvoiceRow | undefined
     if (!invoice) return undefined
     return attachItems(invoice)
   }
@@ -72,11 +106,13 @@ export function createInvoiceService(db: Database.Database) {
       })
 
       const result = db.prepare(`
-        INSERT INTO invoices (invoice_number, invoice_date, subtotal, total, notes)
-        VALUES (@invoice_number, @invoice_date, @subtotal, @total, @notes)
+        INSERT INTO invoices (invoice_number, invoice_date, supplier_id, supplier_name, subtotal, total, notes)
+        VALUES (@invoice_number, @invoice_date, @supplier_id, @supplier_name, @subtotal, @total, @notes)
       `).run({
         invoice_number: invoiceNumber,
         invoice_date: data.invoice_date,
+        supplier_id: data.supplier_id,
+        supplier_name: data.supplier_name,
         subtotal,
         total: subtotal,
         notes: data.notes ?? null
@@ -88,7 +124,6 @@ export function createInvoiceService(db: Database.Database) {
         VALUES (@invoice_id, @product_id, @product_name, @quantity, @unit_price, @total, @line_sort)
       `)
 
-      console.log(`[InvoiceService] create: saving ${lineItems.length} items for invoice #${invoiceNumber}`)
       for (const item of lineItems) {
         insertItem.run({ invoice_id: invoiceId, ...item })
       }
@@ -99,8 +134,12 @@ export function createInvoiceService(db: Database.Database) {
 
     const newId = doCreate()
     const saved = db.prepare('SELECT COUNT(*) AS c FROM invoice_items WHERE invoice_id = ?').get(newId) as { c: number }
-    console.log(`[InvoiceService] create: invoice #${invoiceNumber} saved (id=${newId}) with ${saved.c} items`)
-    return db.prepare('SELECT * FROM invoices WHERE id = ?').get(newId) as InvoiceRow
+    return db.prepare(`
+      SELECT i.*, COALESCE(s.name, i.supplier_name, '') AS supplier_name
+      FROM invoices i
+      LEFT JOIN suppliers s ON s.id = i.supplier_id
+      WHERE i.id = ?
+    `).get(newId) as InvoiceRow
   }
 
   const update = (id: number, data: InvoiceInput): InvoiceRow => {
@@ -114,11 +153,13 @@ export function createInvoiceService(db: Database.Database) {
       })
 
       db.prepare(`
-        UPDATE invoices SET invoice_date = @invoice_date, subtotal = @subtotal, total = @total, notes = @notes
+        UPDATE invoices SET invoice_date = @invoice_date, supplier_id = @supplier_id, supplier_name = @supplier_name, subtotal = @subtotal, total = @total, notes = @notes
         WHERE id = @id
       `).run({
         id,
         invoice_date: data.invoice_date,
+        supplier_id: data.supplier_id,
+        supplier_name: data.supplier_name,
         subtotal,
         total: subtotal,
         notes: data.notes ?? null
@@ -131,7 +172,6 @@ export function createInvoiceService(db: Database.Database) {
         VALUES (@invoice_id, @product_id, @product_name, @quantity, @unit_price, @total, @line_sort)
       `)
 
-      console.log(`[InvoiceService] update: saving ${lineItems.length} items for invoice id=${id}`)
       for (const item of lineItems) {
         insertItem.run({ invoice_id: id, ...item })
       }
@@ -140,14 +180,75 @@ export function createInvoiceService(db: Database.Database) {
     })
 
     const updatedId = doUpdate()
-    const saved = db.prepare('SELECT COUNT(*) AS c FROM invoice_items WHERE invoice_id = ?').get(updatedId) as { c: number }
-    console.log(`[InvoiceService] update: invoice id=${updatedId} updated with ${saved.c} items`)
-    return db.prepare('SELECT * FROM invoices WHERE id = ?').get(updatedId) as InvoiceRow
+    return db.prepare(`
+      SELECT i.*, COALESCE(s.name, i.supplier_name, '') AS supplier_name
+      FROM invoices i
+      LEFT JOIN suppliers s ON s.id = i.supplier_id
+      WHERE i.id = ?
+    `).get(updatedId) as InvoiceRow
   }
 
   const remove = (id: number): boolean => {
     return db.prepare('DELETE FROM invoices WHERE id = ?').run(id).changes > 0
   }
 
-  return { list, search, getById, create, update, remove }
+  const getBySupplier = (supplierId: number): (InvoiceRow & { items: any[] })[] => {
+    const invoices = db.prepare(`
+      SELECT i.*, COALESCE(s.name, i.supplier_name, '') AS supplier_name
+      FROM invoices i
+      LEFT JOIN suppliers s ON s.id = i.supplier_id
+      WHERE i.supplier_id = ?
+      ORDER BY i.invoice_date ASC
+    `).all(supplierId) as InvoiceRow[]
+    return invoices.map(attachItems)
+  }
+
+  const searchAdvanced = (filters: {
+    q?: string
+    supplierId?: number | null
+    dateFrom?: string
+    dateTo?: string
+    amountMin?: number
+    amountMax?: number
+  }): (InvoiceRow & { items: any[] })[] => {
+    const conditions: string[] = []
+    const params: any[] = []
+
+    if (filters.q) {
+      conditions.push('(i.invoice_number LIKE ? OR COALESCE(s.name, i.supplier_name, \'\') LIKE ?)')
+      params.push(`%${filters.q}%`, `%${filters.q}%`)
+    }
+    if (filters.supplierId) {
+      conditions.push('i.supplier_id = ?')
+      params.push(filters.supplierId)
+    }
+    if (filters.dateFrom) {
+      conditions.push('i.invoice_date >= ?')
+      params.push(filters.dateFrom)
+    }
+    if (filters.dateTo) {
+      conditions.push('i.invoice_date <= ?')
+      params.push(filters.dateTo)
+    }
+    if (filters.amountMin !== undefined && filters.amountMin !== null) {
+      conditions.push('i.total >= ?')
+      params.push(filters.amountMin)
+    }
+    if (filters.amountMax !== undefined && filters.amountMax !== null) {
+      conditions.push('i.total <= ?')
+      params.push(filters.amountMax)
+    }
+
+    const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : ''
+    const invoices = db.prepare(`
+      SELECT i.*, COALESCE(s.name, i.supplier_name, '') AS supplier_name
+      FROM invoices i
+      LEFT JOIN suppliers s ON s.id = i.supplier_id
+      ${where}
+      ORDER BY i.created_at DESC LIMIT 100
+    `).all(...params) as InvoiceRow[]
+    return invoices.map(attachItems)
+  }
+
+  return { list, search, searchAdvanced, getById, create, update, remove, getBySupplier, getSupplierBalance }
 }

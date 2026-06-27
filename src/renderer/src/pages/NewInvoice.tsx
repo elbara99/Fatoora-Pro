@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Input, InputNumber, Button, Table, Space, DatePicker, message, Card, Statistic } from 'antd'
+import { Input, InputNumber, Button, Table, Space, DatePicker, message, Card, Statistic, Select, Modal, Form, Row, Col } from 'antd'
 import { PlusOutlined, SendOutlined, PrinterOutlined, DeleteOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { formatCurrency } from '../utils/format'
 import { buildPrintHtml } from '../utils/printTemplate'
-import type { Product, Invoice } from '../types'
+import type { Product, Invoice, Supplier } from '../types'
 
 interface LineItem {
   key: number
@@ -24,12 +24,15 @@ export default function NewInvoice() {
   const location = useLocation()
   const navigate = useNavigate()
   const editInvoice = (location.state as any)?.editInvoice as Invoice | undefined
+  const duplicateInvoice = (location.state as any)?.duplicateInvoice as Invoice | undefined
   const isEditing = !!editInvoice
+  const sourceInvoice = editInvoice || duplicateInvoice
 
   const [products, setProducts] = useState<Product[]>([])
+  const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [items, setItems] = useState<LineItem[]>(() =>
-    editInvoice
-      ? (editInvoice.items || []).map(item => ({
+    sourceInvoice
+      ? (sourceInvoice.items || []).map(item => ({
           key: nextKey(),
           product_id: item.product_id,
           product_name: item.product_name,
@@ -38,19 +41,25 @@ export default function NewInvoice() {
         }))
       : [{ key: nextKey(), product_id: null, product_name: '', quantity: 1, unit_price: 0 }]
   )
-  const [invoiceDate, setInvoiceDate] = useState(editInvoice ? dayjs(editInvoice.invoice_date) : dayjs())
+  const [invoiceDate, setInvoiceDate] = useState(sourceInvoice ? dayjs(sourceInvoice.invoice_date) : dayjs())
+  const [selectedSupplier, setSelectedSupplier] = useState<number | null>(sourceInvoice?.supplier_id ?? null)
+  const [supplierName, setSupplierName] = useState(sourceInvoice?.supplier_name || '')
   const [saving, setSaving] = useState(false)
   const [searchTexts, setSearchTexts] = useState<Record<number, string>>({})
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({})
+  const [prevBalance, setPrevBalance] = useState(0)
+  const [newSupplierModal, setNewSupplierModal] = useState(false)
+  const [newSupplierForm] = Form.useForm()
 
   useEffect(() => {
     window.api.products.list().then(setProducts)
+    window.api.suppliers.list().then(setSuppliers)
   }, [])
 
   useEffect(() => {
-    if (editInvoice && editInvoice.items) {
+    if (sourceInvoice && sourceInvoice.items) {
       const texts: Record<number, string> = {}
-      editInvoice.items.forEach((item, idx) => {
+      sourceInvoice.items.forEach((item, idx) => {
         const line = items[idx]
         if (line) texts[line.key] = item.product_name
       })
@@ -58,7 +67,18 @@ export default function NewInvoice() {
     }
   }, [])
 
+  useEffect(() => {
+    if (selectedSupplier && !isEditing) {
+      window.api.invoices.supplierBalance(selectedSupplier).then(b => setPrevBalance(b.previousBalance))
+    } else if (editInvoice && editInvoice.supplier_id) {
+      window.api.invoices.supplierBalance(editInvoice.supplier_id, editInvoice.id).then(b => setPrevBalance(b.previousBalance))
+    } else {
+      setPrevBalance(0)
+    }
+  }, [selectedSupplier, isEditing])
+
   const grandTotal = items.reduce((sum, i) => sum + i.quantity * i.unit_price, 0)
+  const newBalance = prevBalance + grandTotal
 
   const setItem = useCallback((key: number, field: string, value: any) => {
     setItems(prev => prev.map(i => i.key === key ? { ...i, [field]: value } : i))
@@ -92,13 +112,50 @@ export default function NewInvoice() {
     }
   }, [products, setItem])
 
+  const handleSupplierChange = (value: number | null) => {
+    if (value === -1) {
+      setNewSupplierModal(true)
+      return
+    }
+    setSelectedSupplier(value)
+    if (value) {
+      const s = suppliers.find(sup => sup.id === value)
+      setSupplierName(s?.name || '')
+    } else {
+      setSupplierName('')
+    }
+  }
+
+  const handleNewSupplier = async () => {
+    const values = await newSupplierForm.validateFields()
+    const result = await window.api.suppliers.create(values)
+    if (result.success) {
+      const created = result.data
+      setSuppliers(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
+      setSelectedSupplier(created.id)
+      setSupplierName(created.name)
+      setNewSupplierModal(false)
+      newSupplierForm.resetFields()
+      message.success(t('supplier_created'))
+    } else {
+      setSelectedSupplier(result.existingId)
+      setSupplierName(result.existingName)
+      setNewSupplierModal(false)
+      newSupplierForm.resetFields()
+      message.info(t('supplier_duplicate', { name: result.existingName }))
+    }
+  }
+
   const handleSave = async () => {
+    if (!selectedSupplier) { message.error(t('select_supplier')); return }
     const validItems = items.filter(i => i.product_id && i.quantity > 0)
-    if (validItems.length === 0) { message.error('Add at least one item'); return }
+    if (validItems.length === 0) { message.error(t('add_item_required')); return }
     setSaving(true)
     try {
       const payload = {
         invoice_date: invoiceDate.format('YYYY-MM-DD'),
+        supplier_id: selectedSupplier,
+        supplier_name: supplierName,
         items: validItems.map(i => ({
           product_id: i.product_id!,
           product_name: i.product_name,
@@ -107,14 +164,15 @@ export default function NewInvoice() {
         }))
       }
       if (isEditing) {
-        console.log('[NewInvoice] Updating invoice', editInvoice!.id, payload)
         await window.api.invoices.update(editInvoice!.id, payload)
-        message.success('Invoice updated')
+        message.success(t('invoice_updated'))
         navigate('/invoices')
       } else {
-        console.log('[NewInvoice] Creating invoice', payload)
         await window.api.invoices.create(payload)
-        message.success('Invoice saved')
+        message.success(t('invoice_saved'))
+        setSelectedSupplier(null)
+        setSupplierName('')
+        setPrevBalance(0)
         setItems([{ key: nextKey(), product_id: null, product_name: '', quantity: 1, unit_price: 0 }])
         setSearchTexts({})
       }
@@ -133,21 +191,57 @@ export default function NewInvoice() {
     const settings = await window.api.settings.getAll()
     const invNumber = isEditing ? editInvoice!.invoice_number : ''
 
+    const supplier = selectedSupplier ? suppliers.find(s => s.id === selectedSupplier) : null
+    const lang = settings.language || 'ar'
+    const subtotal = items.reduce((sum, i) => sum + i.quantity * i.unit_price, 0)
+
     const html = buildPrintHtml({
       invoiceNumber: invNumber,
       invoiceDate: invoiceDate.format('YYYY-MM-DD'),
+      supplierName: supplier?.name || supplierName.trim(),
+      supplierPhone: supplier?.phone || '',
+      supplierAddress: supplier?.address || '',
+      supplierNotes: supplier?.notes || '',
       items: validItems.map(i => ({
         name: i.product_name,
         qty: i.quantity,
         price: i.unit_price,
         total: i.quantity * i.unit_price
       })),
+      subtotal,
       grandTotal,
+      previousBalance: prevBalance,
+      newBalance,
       companyName: settings.company_name || '',
       address: settings.address || '',
       phone: settings.phone || '',
       logo: settings.logo || '',
-      language: settings.language || 'en'
+      language: lang,
+      version: '1.0.0',
+      labels: {
+        invoiceTitle: t('print_invoice_title'),
+        invoiceNo: t('print_invoice_no'),
+        invoiceDate: t('print_invoice_date'),
+        printDate: t('print_print_date'),
+        supplierBoxTitle: t('print_supplier_box'),
+        supplierName: t('print_supplier_name'),
+        phone: t('print_phone'),
+        address: t('print_address'),
+        notes: t('print_notes'),
+        colNo: t('print_col_no'),
+        colProduct: t('print_col_product'),
+        colQty: t('print_col_qty'),
+        colPrice: t('print_col_price'),
+        colTotal: t('print_col_total'),
+        subtotal: t('print_subtotal'),
+        previousBalance: t('print_previous_balance'),
+        grandTotal: t('print_grand_total'),
+        newBalance: t('print_new_balance'),
+        thankYou: t('print_thank_you'),
+        programName: t('print_program_name'),
+        versionLabel: t('print_version'),
+        autoPrint: t('print_auto_print')
+      }
     })
 
     await window.api.printInvoice(html)
@@ -247,7 +341,7 @@ export default function NewInvoice() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
           <h2 style={{ margin: 0 }}>{isEditing ? t('edit_invoice') : t('new_invoice')}</h2>
           {isEditing && <span style={{ color: '#666', fontSize: 14 }}>{editInvoice!.invoice_number}</span>}
@@ -257,6 +351,21 @@ export default function NewInvoice() {
           <Button icon={<SendOutlined />} type="primary" onClick={handleSave} loading={saving}>{isEditing ? t('update_invoice') : t('save_invoice')}</Button>
           <Button icon={<PrinterOutlined />} onClick={handlePrint}>{t('print')}</Button>
         </Space>
+      </div>
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ display: 'block', marginBottom: 4, fontSize: 13, color: '#555' }}>{t('supplier')} <span style={{ color: '#ff4d4f' }}>*</span></label>
+        <Select
+          value={selectedSupplier}
+          onChange={handleSupplierChange}
+          style={{ width: 360 }}
+          placeholder={t('select_supplier')}
+          showSearch
+          filterOption={(input, option) => (option?.label as string || '').toLowerCase().includes(input.toLowerCase())}
+          options={[
+            ...suppliers.map(s => ({ value: s.id, label: s.name })),
+            { value: -1, label: `+ ${t('add_new_supplier')}`, disabled: false }
+          ]}
+        />
       </div>
 
       {items.map(r => (
@@ -288,9 +397,40 @@ export default function NewInvoice() {
         style={{ marginBottom: 16 }}
       />
 
-      <Card style={{ width: 300, marginLeft: 'auto' }}>
-        <Statistic title={t('total')} valueFormatter={() => formatCurrency(grandTotal)} value={grandTotal} />
-      </Card>
+      <Row gutter={16} style={{ justifyContent: 'flex-end' }}>
+        <Col>
+          <Card size="small" style={{ width: 240 }}>
+            <Statistic title={t('total')} valueFormatter={() => formatCurrency(grandTotal)} value={grandTotal} />
+          </Card>
+        </Col>
+        {selectedSupplier && (
+          <>
+            <Col>
+              <Card size="small" style={{ width: 240 }}>
+                <Statistic title={t('previous_balance')} valueFormatter={() => formatCurrency(prevBalance)} value={prevBalance} />
+              </Card>
+            </Col>
+            <Col>
+              <Card size="small" style={{ width: 240, borderLeft: '3px solid #1677ff' }}>
+                <Statistic title={t('new_balance')} valueFormatter={() => formatCurrency(newBalance)} value={newBalance} valueStyle={{ color: '#1677ff', fontWeight: 700 }} />
+              </Card>
+            </Col>
+          </>
+        )}
+      </Row>
+
+      <Modal
+        title={t('add_new_supplier')}
+        open={newSupplierModal}
+        onCancel={() => setNewSupplierModal(false)}
+        onOk={handleNewSupplier}
+        okText={t('save')}
+      >
+        <Form form={newSupplierForm} layout="vertical">
+          <Form.Item name="name" label={t('name')} rules={[{ required: true }]}><Input /></Form.Item>
+          <Form.Item name="phone" label={t('phone')}><Input /></Form.Item>
+        </Form>
+      </Modal>
     </div>
   )
 }
