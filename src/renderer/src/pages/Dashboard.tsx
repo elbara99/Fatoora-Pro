@@ -13,8 +13,11 @@ export default function Dashboard() {
   const [supplierDash, setSupplierDash] = useState<SupplierDashboard | null>(null)
 
   useEffect(() => {
-    window.api.dashboard.summary().then(setData)
-    window.api.suppliers.dashboard().then(setSupplierDash)
+    const timer = setTimeout(() => {
+      window.api.dashboard.summary().then(setData)
+      window.api.suppliers.dashboard().then(setSupplierDash)
+    }, 0)
+    return () => clearTimeout(timer)
   }, [])
 
   const topColumns = [

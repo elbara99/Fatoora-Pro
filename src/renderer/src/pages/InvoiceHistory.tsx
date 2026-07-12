@@ -83,7 +83,7 @@ export default function InvoiceHistory() {
         supplierAddress = sup.address || ''
         supplierNotes = sup.notes || ''
       }
-      const bal = await window.api.invoices.supplierBalance(full.supplier_id, full.id)
+      const bal = await window.api.invoices.globalBalance(full.id)
       previousBalance = bal.previousBalance
     }
 

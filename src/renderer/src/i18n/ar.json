@@ -116,5 +116,9 @@
   "print_thank_you": "شكراً لتعاملكم معنا",
   "print_program_name": "اسم البرنامج:",
   "print_version": "الإصدار",
-  "print_auto_print": "تمت الطباعة تلقائياً بواسطة فاتورة برو"
+  "print_auto_print": "تمت الطباعة تلقائياً بواسطة فاتورة برو",
+  "add_product": "إضافة منتج جديد",
+  "product_created": "تم إنشاء المنتج",
+  "product_not_found": "لم يتم العثور على المنتج",
+  "product_not_found_add": "منتج غير موجود — إضافة"
 }

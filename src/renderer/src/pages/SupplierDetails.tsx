@@ -14,6 +14,7 @@ export default function SupplierDetails() {
   const navigate = useNavigate()
   const [supplier, setSupplier] = useState<SupplierWithBalance | null>(null)
   const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [globalBalanceMap, setGlobalBalanceMap] = useState<Record<number, number>>({})
   const [search, setSearch] = useState('')
   const [dateFilter, setDateFilter] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null)
   const [loading, setLoading] = useState(true)
@@ -23,10 +24,18 @@ export default function SupplierDetails() {
     setLoading(true)
     Promise.all([
       window.api.suppliers.getWithBalance(Number(id)),
-      window.api.invoices.getBySupplier(Number(id))
-    ]).then(([s, invs]) => {
+      window.api.invoices.getBySupplier(Number(id)),
+      window.api.invoices.listAllByDate()
+    ]).then(([s, invs, all]) => {
       setSupplier(s ?? null)
       setInvoices(invs)
+      let running = 0
+      const map: Record<number, number> = {}
+      for (const inv of all) {
+        running += inv.total
+        map[inv.id] = running
+      }
+      setGlobalBalanceMap(map)
     }).finally(() => setLoading(false))
   }, [id])
 
@@ -69,11 +78,10 @@ export default function SupplierDetails() {
     await window.api.printInvoice(html)
   }
 
-  let runningBalance = 0
-  const runningInvoices = filtered.map(inv => {
-    runningBalance += inv.total
-    return { ...inv, _runningBalance: runningBalance }
-  })
+  const runningInvoices = filtered.map(inv => ({
+    ...inv,
+    _runningBalance: globalBalanceMap[inv.id] ?? 0
+  }))
 
   const columns = [
     { title: t('invoice_number'), dataIndex: 'invoice_number', key: 'num', width: 150 },

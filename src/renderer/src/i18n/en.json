@@ -116,5 +116,9 @@
   "print_thank_you": "Thank you for your business.",
   "print_program_name": "Program:",
   "print_version": "Version",
-  "print_auto_print": "Printed automatically by Fatoora Pro"
+  "print_auto_print": "Printed automatically by Fatoora Pro",
+  "add_product": "Add new product",
+  "product_created": "Product created",
+  "product_not_found": "Product not found",
+  "product_not_found_add": "Product not found — Add"
 }

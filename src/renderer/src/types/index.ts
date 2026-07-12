@@ -98,7 +98,8 @@ declare global {
         update: (id: number, data: any) => Promise<Invoice>
         delete: (id: number) => Promise<boolean>
         getBySupplier: (supplierId: number) => Promise<Invoice[]>
-        supplierBalance: (supplierId: number, excludeId?: number) => Promise<{ previousBalance: number; newBalance: number }>
+        globalBalance: (excludeId?: number) => Promise<{ previousBalance: number; newBalance: number }>
+        listAllByDate: () => Promise<Invoice[]>
       }
       suppliers: {
         list: () => Promise<Supplier[]>

@@ -50,6 +50,9 @@ export default function NewInvoice() {
   const [prevBalance, setPrevBalance] = useState(0)
   const [newSupplierModal, setNewSupplierModal] = useState(false)
   const [newSupplierForm] = Form.useForm()
+  const [newProductModal, setNewProductModal] = useState(false)
+  const [newProductForm] = Form.useForm()
+  const newProductTargetKeyRef = useRef<number | null>(null)
 
   useEffect(() => {
     window.api.products.list().then(setProducts)
@@ -68,14 +71,9 @@ export default function NewInvoice() {
   }, [])
 
   useEffect(() => {
-    if (selectedSupplier && !isEditing) {
-      window.api.invoices.supplierBalance(selectedSupplier).then(b => setPrevBalance(b.previousBalance))
-    } else if (editInvoice && editInvoice.supplier_id) {
-      window.api.invoices.supplierBalance(editInvoice.supplier_id, editInvoice.id).then(b => setPrevBalance(b.previousBalance))
-    } else {
-      setPrevBalance(0)
-    }
-  }, [selectedSupplier, isEditing])
+    const excludeId = isEditing ? editInvoice!.id : undefined
+    window.api.invoices.globalBalance(excludeId).then(b => setPrevBalance(b.previousBalance))
+  }, [])
 
   const grandTotal = items.reduce((sum, i) => sum + i.quantity * i.unit_price, 0)
   const newBalance = prevBalance + grandTotal
@@ -144,6 +142,19 @@ export default function NewInvoice() {
       newSupplierForm.resetFields()
       message.info(t('supplier_duplicate', { name: result.existingName }))
     }
+  }
+
+  const handleNewProduct = async () => {
+    const values = await newProductForm.validateFields()
+    const created = await window.api.products.create(values)
+    const updated = await window.api.products.list()
+    setProducts(updated)
+    if (newProductTargetKeyRef.current) {
+      handleProductSelect(newProductTargetKeyRef.current, created.id)
+    }
+    setNewProductModal(false)
+    newProductForm.resetFields()
+    message.success(t('product_created'))
   }
 
   const handleSave = async () => {
@@ -261,32 +272,57 @@ export default function NewInvoice() {
       title: t('product'), dataIndex: 'product_name', key: 'product', width: '45%',
       render: (_: string, _r: LineItem) => {
         const r = _r
+        const searchText = searchTexts[r.key] ?? ''
+        const filtered = filteredProducts(r.key)
+        const showAddHint = searchText.trim() !== '' && filtered.length === 0 && !r.product_id
         return (
-          <input
-            ref={el => inputRefs.current[`product-${r.key}`] = el}
-            list={`products-${r.key}`}
-            value={searchTexts[r.key] ?? r.product_name}
-            onChange={e => {
-              setSearchTexts(prev => ({ ...prev, [r.key]: e.target.value }))
-              const match = products.find(p => p.name === e.target.value)
-              if (match) handleProductSelect(r.key, match.id)
-            }}
-            onKeyDown={e => {
-              if (e.key === 'Enter') {
-                const match = products.find(p => p.name === (searchTexts[r.key] ?? ''))
-                if (!match && filteredProducts(r.key).length === 1) {
-                  const first = filteredProducts(r.key)[0]
-                  handleProductSelect(r.key, first.id)
+          <div>
+            <input
+              ref={el => inputRefs.current[`product-${r.key}`] = el}
+              list={`products-${r.key}`}
+              value={searchTexts[r.key] ?? r.product_name}
+              onChange={e => {
+                setSearchTexts(prev => ({ ...prev, [r.key]: e.target.value }))
+                const match = products.find(p => p.name === e.target.value)
+                if (match) handleProductSelect(r.key, match.id)
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  const match = products.find(p => p.name === (searchTexts[r.key] ?? ''))
+                  if (!match && filtered.length === 1) {
+                    handleProductSelect(r.key, filtered[0].id)
+                  } else if (!match && showAddHint) {
+                    newProductTargetKeyRef.current = r.key
+                    newProductForm.setFieldsValue({ name: searchText, selling_price: 0 })
+                    setNewProductModal(true)
+                  }
+                  if (r.product_id) {
+                    const ref = inputRefs.current[`qty-${r.key}`]
+                    if (ref) ref.focus()
+                  }
                 }
-                if (r.product_id) {
-                  const ref = inputRefs.current[`qty-${r.key}`]
-                  if (ref) ref.focus()
-                }
-              }
-            }}
-            style={{ width: '100%', border: 'none', outline: 'none', background: 'transparent', fontSize: 14 }}
-            placeholder={t('search') + '...'}
-          />
+              }}
+              style={{ width: '100%', border: 'none', outline: 'none', background: 'transparent', fontSize: 14 }}
+              placeholder={t('search') + '...'}
+            />
+            {showAddHint && (
+              <div style={{ marginTop: 2 }}>
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<PlusOutlined />}
+                  onClick={() => {
+                    newProductTargetKeyRef.current = r.key
+                    newProductForm.setFieldsValue({ name: searchText, selling_price: 0 })
+                    setNewProductModal(true)
+                  }}
+                  style={{ padding: 0, fontSize: 12, height: 'auto' }}
+                >
+                  {t('add_product')}
+                </Button>
+              </div>
+            )}
+          </div>
         )
       }
     },
@@ -429,6 +465,22 @@ export default function NewInvoice() {
         <Form form={newSupplierForm} layout="vertical">
           <Form.Item name="name" label={t('name')} rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="phone" label={t('phone')}><Input /></Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={t('add_product')}
+        open={newProductModal}
+        onCancel={() => setNewProductModal(false)}
+        onOk={handleNewProduct}
+        okText={t('save')}
+      >
+        <Form form={newProductForm} layout="vertical">
+          <div style={{ fontSize: 13, color: '#888', marginBottom: 16 }}>{t('code_auto')}</div>
+          <Form.Item name="name" label={t('name')} rules={[{ required: true }]}><Input /></Form.Item>
+          <Form.Item name="selling_price" label={t('selling_price')} rules={[{ required: true }]}>
+            <InputNumber min={0} style={{ width: '100%' }} />
+          </Form.Item>
         </Form>
       </Modal>
     </div>

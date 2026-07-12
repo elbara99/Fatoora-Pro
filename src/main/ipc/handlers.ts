@@ -4,7 +4,7 @@ import { createProductService } from '../services/product.service'
 import { createInvoiceService } from '../services/invoice.service'
 import { createSupplierService, DuplicateSupplierError } from '../services/supplier.service'
 import { createSettingsService } from '../services/settings.service'
-import { importProductsFromCsv } from '../services/import.service'
+import type { ImportResult } from '../services/import.service'
 
 export function registerHandlers(db: Database.Database): void {
   const products = createProductService(db)
@@ -28,7 +28,10 @@ export function registerHandlers(db: Database.Database): void {
   ipcMain.handle('products:create', (_e, data) => products.create(data))
   ipcMain.handle('products:update', (_e, id: number, data) => products.update(id, data))
   ipcMain.handle('products:delete', (_e, id: number) => products.remove(id))
-  ipcMain.handle('products:importCsv', () => importProductsFromCsv(db))
+  ipcMain.handle('products:importCsv', async () => {
+    const { importProductsFromCsv } = await import('../services/import.service')
+    return importProductsFromCsv(db)
+  })
 
   ipcMain.handle('invoices:list', () => invoices.list())
   ipcMain.handle('invoices:search', (_e, q: string) => invoices.search(q))
@@ -38,7 +41,8 @@ export function registerHandlers(db: Database.Database): void {
   ipcMain.handle('invoices:update', (_e, id: number, data) => invoices.update(id, data))
   ipcMain.handle('invoices:delete', (_e, id: number) => invoices.remove(id))
   ipcMain.handle('invoices:getBySupplier', (_e, supplierId: number) => invoices.getBySupplier(supplierId))
-  ipcMain.handle('invoices:supplierBalance', (_e, supplierId: number, excludeId?: number) => invoices.getSupplierBalance(supplierId, excludeId))
+  ipcMain.handle('invoices:globalBalance', (_e, excludeId?: number) => invoices.getGlobalBalance(excludeId))
+  ipcMain.handle('invoices:listAllByDate', () => invoices.listAllByDate())
 
   ipcMain.handle('suppliers:list', () => suppliers.list())
   ipcMain.handle('suppliers:listWithBalances', () => suppliers.listWithBalances())

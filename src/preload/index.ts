@@ -20,7 +20,8 @@ const api = {
     update: (id: number, data: any) => ipcRenderer.invoke('invoices:update', id, data),
     delete: (id: number) => ipcRenderer.invoke('invoices:delete', id),
     getBySupplier: (supplierId: number) => ipcRenderer.invoke('invoices:getBySupplier', supplierId),
-    supplierBalance: (supplierId: number, excludeId?: number) => ipcRenderer.invoke('invoices:supplierBalance', supplierId, excludeId)
+    globalBalance: (excludeId?: number) => ipcRenderer.invoke('invoices:globalBalance', excludeId),
+    listAllByDate: () => ipcRenderer.invoke('invoices:listAllByDate')
   },
   suppliers: {
     list: () => ipcRenderer.invoke('suppliers:list'),

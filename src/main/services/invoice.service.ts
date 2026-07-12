@@ -42,18 +42,28 @@ export function createInvoiceService(db: Database.Database) {
     return { ...invoice, items }
   }
 
-  const getSupplierBalance = (supplierId: number, excludeInvoiceId?: number): SupplierBalance => {
+  const getGlobalBalance = (excludeInvoiceId?: number): SupplierBalance => {
     let previousBalance: number
     if (excludeInvoiceId) {
       previousBalance = (db.prepare(
-        'SELECT COALESCE(SUM(total), 0) AS t FROM invoices WHERE supplier_id = ? AND id != ?'
-      ).get(supplierId, excludeInvoiceId) as { t: number }).t
+        'SELECT COALESCE(SUM(total), 0) AS t FROM invoices WHERE id != ?'
+      ).get(excludeInvoiceId) as { t: number }).t
     } else {
       previousBalance = (db.prepare(
-        'SELECT COALESCE(SUM(total), 0) AS t FROM invoices WHERE supplier_id = ?'
-      ).get(supplierId) as { t: number }).t
+        'SELECT COALESCE(SUM(total), 0) AS t FROM invoices'
+      ).get() as { t: number }).t
     }
     return { previousBalance, newBalance: previousBalance }
+  }
+
+  const listAllByDate = (): (InvoiceRow & { items: any[] })[] => {
+    const invoices = db.prepare(`
+      SELECT i.*, COALESCE(s.name, i.supplier_name, '') AS supplier_name
+      FROM invoices i
+      LEFT JOIN suppliers s ON s.id = i.supplier_id
+      ORDER BY i.invoice_date ASC, i.id ASC
+    `).all() as InvoiceRow[]
+    return invoices.map(attachItems)
   }
 
   const list = (): (InvoiceRow & { items: any[] })[] => {
@@ -250,5 +260,5 @@ export function createInvoiceService(db: Database.Database) {
     return invoices.map(attachItems)
   }
 
-  return { list, search, searchAdvanced, getById, create, update, remove, getBySupplier, getSupplierBalance }
+  return { list, search, searchAdvanced, getById, create, update, remove, getBySupplier, getGlobalBalance, listAllByDate }
 }
